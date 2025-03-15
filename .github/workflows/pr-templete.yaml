@@ -1,0 +1,90 @@
+name: Apply PR Template and Labels
+
+on:
+  pull_request:
+    types: [opened, edited]
+
+jobs:
+  apply-template-and-labels:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Determine PR Template and Labels
+        id: select-template-and-labels
+        run: |
+          BRANCH_NAME="${{ github.head_ref }}"
+          TEMPLATE_PATH=".github/PULL_REQUEST_TEMPLATE"
+
+          # 기본 템플릿은 request_template
+          TEMPLATE_FILE="$TEMPLATE_PATH/request_template.md"
+          LABELS="feature"  # 기본 라벨은 feature
+          PR_TITLE_PREFIX="[Feature] - "
+          ISSUE_NUMBER=$(echo "$BRANCH_NAME" | cut -d'/' -f2)  # 이슈 번호 추출
+
+          # dev 브랜치인 경우 release_template 사용
+          if [[ "$BRANCH_NAME" == "dev" ]]; then
+            TEMPLATE_FILE="$TEMPLATE_PATH/release_template.md"
+            LABELS="patch"
+            PR_TITLE_PREFIX="[Release] - "
+          fi
+
+          # feature, bug, chore 브랜치에 맞는 템플릿 설정 및 타이틀 접두어 설정
+          if [[ "$BRANCH_NAME" == feature/* ]]; then
+            LABELS="feature"
+            PR_TITLE_PREFIX="[Feature] - "
+          elif [[ "$BRANCH_NAME" == bug/* ]]; then
+            LABELS="bug"
+            PR_TITLE_PREFIX="[Bug] - "
+          elif [[ "$BRANCH_NAME" == chore/* ]]; then
+            LABELS="chore"
+            PR_TITLE_PREFIX="[Chore] - "
+          fi
+
+          echo "TEMPLATE_FILE=$TEMPLATE_FILE" >> $GITHUB_ENV
+          echo "LABELS=$LABELS" >> $GITHUB_ENV
+          echo "PR_TITLE_PREFIX=$PR_TITLE_PREFIX" >> $GITHUB_ENV
+          echo "ISSUE_NUMBER=$ISSUE_NUMBER" >> $GITHUB_ENV
+
+      - name: Read Template File
+        id: read-template
+        run: |
+          BRANCH_NAME="${{ github.head_ref }}"
+          TEMPLATE_CONTENT=$(cat ${{ env.TEMPLATE_FILE }})
+
+          # dev 브랜치가 아닌 경우 이슈번호 치환
+          if [[ "$BRANCH_NAME" != dev* ]]; then
+            TEMPLATE_CONTENT=$(echo "$TEMPLATE_CONTENT" | sed "s/#issue/#${{ env.ISSUE_NUMBER }}/g")
+          fi
+
+          echo "content<<EOF" >> $GITHUB_ENV
+          echo "$TEMPLATE_CONTENT" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      - name: Update PR Description
+        uses: peter-evans/create-or-update-comment@v2
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          issue-number: ${{ github.event.pull_request.number }}
+          body: ${{ env.content }}
+
+      - name: Add Labels to PR
+        uses: octokit/request-action@v2
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          request: |
+            POST /repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/labels
+            {
+              "labels": ["${{ env.LABELS }}"]
+            }
+
+      - name: Update PR Title
+        uses: octokit/request-action@v2
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          request: |
+            PATCH /repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}
+            {
+              "title": "${{ env.PR_TITLE_PREFIX }}${{ github.event.pull_request.title }}"
+            }

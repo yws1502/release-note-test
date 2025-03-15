@@ -1,0 +1,43 @@
+name: Apply PR Template
+
+on:
+  pull_request:
+    types: [opened, edited]
+
+jobs:
+  apply-template:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Determine PR Template
+        id: select-template
+        run: |
+          PR_TITLE="${{ github.event.pull_request.title }}"
+          TEMPLATE_PATH=".github/PULL_REQUEST_TEMPLATE"
+
+          # 기본 템플릿 (default)
+          TEMPLATE_FILE="$TEMPLATE_PATH/request_template.md"
+
+          # PR 제목에 따라 템플릿 변경
+          if [[ "$PR_TITLE" == *"[Release]"* ]]; then
+            TEMPLATE_FILE="$TEMPLATE_PATH/release_template.md"
+          fi
+
+          echo "TEMPLATE_FILE=$TEMPLATE_FILE" >> $GITHUB_ENV
+
+      - name: Read Template File
+        id: read-template
+        run: |
+          TEMPLATE_CONTENT=$(cat ${{ env.TEMPLATE_FILE }})
+          echo "content<<EOF" >> $GITHUB_ENV
+          echo "$TEMPLATE_CONTENT" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      - name: Update PR Description
+        uses: actions-ecosystem/action-update-comment@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          number: ${{ github.event.pull_request.number }}
+          body: ${{ env.content }}

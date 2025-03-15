@@ -21,6 +21,7 @@ jobs:
           TEMPLATE_FILE="$TEMPLATE_PATH/request_template.md"
           LABELS="feature"  # 기본 라벨은 feature
           PR_TITLE_PREFIX="[Feature] - "
+          ISSUE_NUMBER=$(echo "$BRANCH_NAME" | cut -d'/' -f2)  # 이슈 번호 추출
 
           # dev 브랜치인 경우 release_template 사용
           if [[ "$BRANCH_NAME" == "dev" ]]; then
@@ -44,11 +45,19 @@ jobs:
           echo "TEMPLATE_FILE=$TEMPLATE_FILE" >> $GITHUB_ENV
           echo "LABELS=$LABELS" >> $GITHUB_ENV
           echo "PR_TITLE_PREFIX=$PR_TITLE_PREFIX" >> $GITHUB_ENV
+          echo "ISSUE_NUMBER=$ISSUE_NUMBER" >> $GITHUB_ENV
 
       - name: Read Template File
         id: read-template
         run: |
+          BRANCH_NAME="${{ github.head_ref }}"
           TEMPLATE_CONTENT=$(cat ${{ env.TEMPLATE_FILE }})
+
+          # dev 브랜치가 아닌 경우 이슈번호 치환
+          if [[ "$BRANCH_NAME" != dev* ]]; then
+            TEMPLATE_CONTENT=$(echo "$TEMPLATE_CONTENT" | sed "s/#issue/#${{ env.ISSUE_NUMBER }}/g")
+          fi
+
           echo "content<<EOF" >> $GITHUB_ENV
           echo "$TEMPLATE_CONTENT" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV

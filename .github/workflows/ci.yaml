@@ -1,0 +1,34 @@
+name: Docker CI PIPELINE
+
+on:
+  push:
+    branches: ["main"]
+  release:
+    types: [published]
+
+jobs:
+  CI:
+    runs-on: ubuntu-latest
+    env:
+      DOCKER_HUB_REPO: ${{ secrets.DOCKER_HUB_REPO }}
+      DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
+
+    steps:
+      - name: Checkout repository
+      - uses: actions/checkout@v4
+
+      - name: Get latest release tag
+        id: get_release
+        run: echo "TAG=$(git describe --tags --abbrev=0)" >> $GITHUB_ENV
+
+      - name: Build the Docker image
+        run: docker build . --file Dockerfile --tag $DOCKER_HUB_REPO/nginx:${{ env.TAG }}
+
+      - name: Login Dockerhub
+        run: echo "$DOCKER_HUB_TOKEN" | docker login --username $DOCKER_HUB_REPO --password-stdin
+
+      - name: Push to docker hub repository
+        run: |
+          docker push $DOCKER_HUB_REPO/nginx:${{ env.TAG }}
+          docker tag $DOCKER_HUB_REPO/nginx:${{ env.TAG }} $DOCKER_HUB_REPO/nginx:latest
+          docker push $DOCKER_HUB_REPO/nginx:latest
